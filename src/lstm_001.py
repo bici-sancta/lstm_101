@@ -208,7 +208,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30,
 
     model.add(Dense(units=1))
 
-    callback = EarlyStopping(monitor='mean_squared_error', patience=5)
+    callback = EarlyStopping(monitor='loss', patience=5)
 
     model.compile(optimizer='adam',
                   loss='mean_squared_error',
