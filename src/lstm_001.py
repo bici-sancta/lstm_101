@@ -41,8 +41,10 @@ plot_dir = '/home/mcdevitt/PycharmProjects/lstm_101/plot/'
 rprt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rprt/'
 # ........................................................
 
+
 def sprintf(buf, fmt, *args):
     buf.write(fmt % args)
+
 
 def dup_scaler(scaler, sc2, col=0):
     """
@@ -72,15 +74,15 @@ def df_cols_like(df):
                        columns=df.dtypes.index)
     return df2
 
+
 def rmse(y, y_hat):
 
     root_mean_squared_error = ((y_hat - y) ** 2).mean() ** .5
-
     return root_mean_squared_error
 # ........................................................
 
 
-def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30,
+def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_feature = 1,
              n_layers = 2, batch_size = 32, n_epochs = 20,
              plot_save = False):
     """
@@ -191,24 +193,27 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30,
     print('\tfeatures = ', 1)
     print('x reshape = ', x.shape)
 
+    assert (n_seq == x.shape[1]) # time steps
+    assert (n_feature == x.shape[2]) # features
+
     # ... build a model
 
     model = Sequential()
-    model.add(LSTM(units=50,
+    model.add(LSTM(units=int(n_seq/2),
                    return_sequences=True,
-                   input_shape=(x.shape[1], x.shape[2])))
+                   input_shape=(n_seq, n_feature)))
     model.add(Dropout(0.2))
 
     for il in range(n_layers-1):
-        model.add(LSTM(units=50, return_sequences=True))
+        model.add(LSTM(units=int(n_seq/2), return_sequences=True))
         model.add(Dropout(0.2))
 
-    model.add(LSTM(units=50))
+    model.add(LSTM(units=int(n_seq/2)))
     model.add(Dropout(0.2))
 
     model.add(Dense(units=1))
 
-    callback = EarlyStopping(monitor='loss', patience=5)
+    callback = EarlyStopping(monitor='loss', patience=10)
 
     model.compile(optimizer='adam',
                   loss='mean_squared_error',
@@ -474,6 +479,7 @@ if __name__ == '__main__':
     n_seq = 30
     n_test = 120
     n_future = 30
+    n_feature = 1
 
     # ... model params
     batch_size = 64
@@ -481,10 +487,10 @@ if __name__ == '__main__':
 
     df_summary = pd.DataFrame()
 
-    for n_seq in [2, 4, 8, 16, 32, 64]:
+    for n_seq in [2, 4, 8, 16]:
         for n_layers in [1, 4, 8]:
             for batch_size in [8, 16, 32, 128]:
-                df = lstm_001(n_data_size, n_seq, n_test, n_future, n_layers, batch_size, n_epochs)
+                df = lstm_001(n_data_size, n_seq, n_test, n_future, n_feature, n_layers, batch_size, n_epochs)
                 df_summary = pd.concat([df_summary, df])
                 print(timer())
                 print(df)
