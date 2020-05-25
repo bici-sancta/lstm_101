@@ -122,8 +122,8 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         print('data set size ', df_sp500.shape)
     df_sp500_red.reset_index(drop=True, inplace=True)
 
-    # ... single column input data set
-    df_oz = df_sp500_red[['Date', 'Open']]
+    # ... input data set : Open + Volume
+    df_oz = df_sp500_red[['Date', 'Open', 'Volume']]
 
 #    plt.figure(figsize=(5, 3))
 #    plt.plot(df_oz['Date'], df_oz['Open'])
@@ -135,7 +135,8 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     if n_train < 1:
         print('test length exceeds data set length')
 
-    n_cols = 1
+# ... n_cols <= n_feature ???
+    n_cols = n_feature
 
     df_oz_train = df_oz.head(n_train)
     df_oz_test = df_oz.tail(n_test)
@@ -146,7 +147,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
  #   plt.plot(df_oz_test['Date'], df_oz_test['Open'])
  #   plt.close()
 
-    df_oz_train_data = df_oz_train[['Open']]
+    df_oz_train_data = df_oz_train[['Open', 'Volume']]
     oz = df_oz_train_data.to_numpy()
 
     print('oz shape = ', oz.shape)
@@ -156,7 +157,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     scaler = MinMaxScaler(feature_range=(0, 1))
     sc2 = MinMaxScaler(feature_range=(0, 1))
 
-    # ... scaler on train set
+    # ... scale on train set
     oz_scaled = scaler.fit_transform(oz[:, 0: n_cols])
 
 #    plt.figure(figsize=(5, 3))
@@ -183,14 +184,14 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     # ... shape data to fit keras input structure
 
     x, y = np.array(x), np.array(y)
-    # x = x.reshape(x.shape[0], x.shape[1], 2)
+    x = x.reshape(x.shape[0], x.shape[1], n_cols)
 
     print('The 3 input dimensions for keras independent data are:')
     print('\tsamples, time steps, and features.')
     print('Current trial,')
     print('\tsamples (n_data_size - n_test - n_seq) = ', n_data_size - n_test - n_seq)
     print('\ttime steps = (n_seq) ', n_seq)
-    print('\tfeatures = ', 1)
+    print('\tfeatures = ', n_cols)
     print('x reshape = ', x.shape)
 
     assert (n_seq == x.shape[1]) # time steps
@@ -211,6 +212,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     model.add(LSTM(units=int(n_seq/2)))
     model.add(Dropout(0.2))
 
+# ... single output model
     model.add(Dense(units=1))
 
     callback = EarlyStopping(monitor='loss', patience=10)
@@ -220,16 +222,17 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
                   metrics=['mape', 'mse'])
 
     start_time = timer()
-    print(start_time)
+    print('start model fit : ', start_time)
     history = model.fit(x, y,
                         # validation_split = 0.25,
-                        epochs=n_epochs,
+                        epochs= n_epochs,
                         batch_size=batch_size,
                         callbacks=[callback],
                         verbose=0)
     end_time = timer()
     del_time = end_time - start_time
-    print(end_time)
+    print('fit complete : ', end_time)
+    print('fit time = ', round(del_time/60, 2), ' (minutes)')
 
     model_train_mse = model.evaluate(x, y, verbose=0)[0]
     model_train_mape = model.evaluate(x, y, verbose=0)[1]
@@ -268,7 +271,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     # ... predict on test set
 
-    df_oz_test_data = df_oz_test[['Open']]
+    df_oz_test_data = df_oz_test[['Open', 'Volume']]
     oz_test = df_oz_test_data.to_numpy()
 
     print('oz shape = ', oz_test.shape)
@@ -310,13 +313,13 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         df_oz_future_data = df_oz_future.tail(n_seq)
 
         # ... select just columns used in model
-        df_oz_future_data = df_oz_future_data[['Open']]
+        df_oz_future_data = df_oz_future_data[['Open', 'Volume']]
 
         # ... convert to numpy array, then scale
         oz_future = df_oz_future_data.to_numpy()
         oz_future_scaled = scaler.transform(oz_future[:, 0: n_cols])
 
-        x_future = oz_future_scaled.reshape(1, n_seq, 1)
+        x_future = oz_future_scaled.reshape(1, n_seq, n_cols)
 
         y_hat_future = model.predict(x_future)
         y_hat_future_inv = sc2.inverse_transform(y_hat_future)
@@ -479,18 +482,22 @@ if __name__ == '__main__':
     n_seq = 30
     n_test = 120
     n_future = 30
-    n_feature = 1
+    n_feature = 2
 
     # ... model params
     batch_size = 64
     n_epochs = 50
 
+    # ... plot switch
+    save_plots = True
+
     df_summary = pd.DataFrame()
 
-    for n_seq in [2, 4, 8, 16]:
-        for n_layers in [1, 4, 8]:
-            for batch_size in [8, 16, 32, 128]:
-                df = lstm_001(n_data_size, n_seq, n_test, n_future, n_feature, n_layers, batch_size, n_epochs)
+    for n_seq in [16]:
+        for n_layers in [2]:
+            for batch_size in [8]:
+                df = lstm_001(n_data_size, n_seq, n_test, n_future, n_feature,
+                              n_layers, batch_size, n_epochs, save_plots)
                 df_summary = pd.concat([df_summary, df])
                 print(timer())
                 print(df)
