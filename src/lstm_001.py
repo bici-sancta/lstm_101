@@ -94,6 +94,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     uuid6 = str(uuid.uuid4()).lower()[0:6]
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid6
+    print('run inititated with run_id ', run_id)
 
     np.random.seed(20200504)
     os.chdir(plot_dir)
@@ -105,7 +106,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     f = "sp500.csv"
     df_sp500 = pd.read_csv(f)
-#    print('read ', df_sp500.shape[0], 'lines from ', f)
+    print('read ', df_sp500.shape[0], 'lines from ', f)
 
     df_sp500 = df_sp500.dropna()
     df_sp500['zeros'] = 0
@@ -200,16 +201,16 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     # ... build a model
 
     model = Sequential()
-    model.add(LSTM(units=int(n_seq/2),
+    model.add(LSTM(units=50,
                    return_sequences=True,
                    input_shape=(n_seq, n_feature)))
     model.add(Dropout(0.2))
 
     for il in range(n_layers-1):
-        model.add(LSTM(units=int(n_seq/2), return_sequences=True))
+        model.add(LSTM(units=50, return_sequences=True))
         model.add(Dropout(0.2))
 
-    model.add(LSTM(units=int(n_seq/2)))
+    model.add(LSTM(units=50))
     model.add(Dropout(0.2))
 
 # ... single output model
@@ -233,9 +234,11 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     del_time = end_time - start_time
     print('fit complete : ', end_time)
     print('fit time = ', round(del_time/60, 2), ' (minutes)')
+    print(model.summary())
 
     model_train_mse = model.evaluate(x, y, verbose=0)[0]
     model_train_mape = model.evaluate(x, y, verbose=0)[1]
+    print('model performance : ', model_train_mape, model_train_mse)
 
     os.chdir(plot_dir)
     plt.figure(figsize=(5, 3))
@@ -276,11 +279,13 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     print('oz shape = ', oz_test.shape)
 
+# ... pre-pend test set w/ n_seq prior points to construct input sequence
     oz_test_scaled = scaler.transform(oz_test[:, 0: n_cols])
     last_train_pts = oz_scaled[-n_seq:]
 
     oz_test_scaled = np.concatenate((last_train_pts, oz_test_scaled), axis=0)
 
+# ... construct each sample of length n_seq
     x_test = []
     for i in range(n_seq, len(oz_test_scaled)):
         x_test.append(oz_test_scaled[i - n_seq: i])
@@ -301,6 +306,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     print(df_oz_test_rmse)
 
     # ... forward forecast
+    # ... what assumptions to make about exogenous columns future data !!!!
 
     df_oz_future = df_oz.tail(n_seq)
     df_oz_future.reset_index(drop=True, inplace=True)
@@ -308,9 +314,14 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     # ... create holding column for predicted values
     df_oz_future['y_hat_future'] = np.nan
 
+    print('future predictions')
     for ia in range(n_future):
         # ... retain last n_seq rows of future dataframe
         df_oz_future_data = df_oz_future.tail(n_seq)
+
+        print(40*'=-')
+        print('iteration ', ia)
+        print(df_oz_future_data)
 
         # ... select just columns used in model
         df_oz_future_data = df_oz_future_data[['Open', 'Volume']]
@@ -319,11 +330,15 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         oz_future = df_oz_future_data.to_numpy()
         oz_future_scaled = scaler.transform(oz_future[:, 0: n_cols])
 
+        # ... reshape args : samples, time steps, features
         x_future = oz_future_scaled.reshape(1, n_seq, n_cols)
 
+        print('-------------------- model x inputs -----------------------')
+        print(x_future)
         y_hat_future = model.predict(x_future)
         y_hat_future_inv = sc2.inverse_transform(y_hat_future)
         sc_y_hat_future_inv = list(y_hat_future_inv.reshape(y_hat_future_inv.shape[0]))[0]
+        print('next predicted value : ', sc_y_hat_future_inv)
 
         df_new_row = df_cols_like(df_oz_future)
         df_new_row['Date'] = df_oz_future['Date'].tail(1) + timedelta(days=1)
@@ -331,6 +346,11 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         df_new_row['Open'] = sc_y_hat_future_inv
 
         df_oz_future = pd.concat([df_oz_future, df_new_row])
+
+# ... forward fill exogenous columns ... TODO : naïve estimation not the best option !!
+        df_oz_future['Volume'] = df_oz_future['Volume'].fillna(method='ffill')
+
+# ... end of loop on stepwise future predictions
 
     # ... make a plot
 
@@ -493,9 +513,9 @@ if __name__ == '__main__':
 
     df_summary = pd.DataFrame()
 
-    for n_seq in [16]:
-        for n_layers in [2]:
-            for batch_size in [8]:
+    for n_seq in [2]:
+        for n_layers in [1]:
+            for batch_size in [64]:
                 df = lstm_001(n_data_size, n_seq, n_test, n_future, n_feature,
                               n_layers, batch_size, n_epochs, save_plots)
                 df_summary = pd.concat([df_summary, df])
