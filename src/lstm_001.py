@@ -3,6 +3,12 @@
 # ...
 # ... 01-mai-2020
 # ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# ... imports
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 import platform; print(platform.platform())
 import sys; print("Python", sys.version)
@@ -14,8 +20,8 @@ from datetime import datetime, timedelta
 from timeit import default_timer as timer
 import uuid
 
-import numpy as np
-import pandas as pd
+import numpy as np; print ("numpy", np.__version__)
+import pandas as pd; print ("pandas", pd.__version__)
 
 pd.set_option("display.max_rows", 999)
 pd.set_option("display.max_columns", 999)
@@ -35,11 +41,20 @@ from keras.layers import Dropout
 from keras.callbacks import EarlyStopping
 
 
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# ... some directories
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 home_dir = '/home/mcdevitt/PycharmProjects/lstm_101/src/'
 data_dir = '/home/mcdevitt/PycharmProjects/lstm_101/data/'
 plot_dir = '/home/mcdevitt/PycharmProjects/lstm_101/plot/'
 rprt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rprt/'
 # ........................................................
+
+
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# ... some utility functions
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 
 def sprintf(buf, fmt, *args):
@@ -79,10 +94,26 @@ def rmse(y, y_hat):
 
     root_mean_squared_error = ((y_hat - y) ** 2).mean() ** .5
     return root_mean_squared_error
+
+
+def clean_column_names(ls_column_names, chars_to_remove=None):
+
+    if chars_to_remove is None:
+        chars_to_remove = [' ', '-', '\.']
+    ls_column_names = ls_column_names.str.lower()
+    for c in chars_to_remove:
+        ls_column_names = ls_column_names.str.replace(c, '_')
+
+    return ls_column_names
+
 # ........................................................
 
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# ... LSTM model implementation
+# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_feature = 1,
+             feature_columns = ['adj_close'],
              n_layers = 2, batch_size = 32, n_epochs = 20,
              plot_save = False):
     """
@@ -94,7 +125,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     uuid6 = str(uuid.uuid4()).lower()[0:6]
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid6
-    print('run inititated with run_id ', run_id)
+    print('run initiated with run_id ', run_id)
 
     np.random.seed(20200504)
     os.chdir(plot_dir)
@@ -109,8 +140,9 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     print('read ', df_sp500.shape[0], 'lines from ', f)
 
     df_sp500 = df_sp500.dropna()
+    df_sp500.columns = clean_column_names(df_sp500.columns)
     df_sp500['zeros'] = 0
-    df_sp500['Date'] = pd.to_datetime(df_sp500['Date'])
+    df_sp500['date'] = pd.to_datetime(df_sp500['date'])
 
 # ... drop leading rows if data set longer than desired size
 
@@ -124,10 +156,10 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     df_sp500_red.reset_index(drop=True, inplace=True)
 
     # ... input data set : Open + Volume
-    df_oz = df_sp500_red[['Date', 'Open', 'Volume']]
+    df_oz = df_sp500_red
 
 #    plt.figure(figsize=(5, 3))
-#    plt.plot(df_oz['Date'], df_oz['Open'])
+#    plt.plot(df_oz['date'], df_oz[feature_columns[0]])
 #    plt.close()
 
     # ... set up train and test size
@@ -144,11 +176,11 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     df_oz_test.reset_index(drop=True, inplace=True)
 
  #   plt.figure(figsize=(5, 3))
- #   plt.plot(df_oz_train['Date'], df_oz_train['Open'])
- #   plt.plot(df_oz_test['Date'], df_oz_test['Open'])
+ #   plt.plot(df_oz_train['date'], df_oz_train[feature_columns[0]])
+ #   plt.plot(df_oz_test['date'], df_oz_test[feature_columns[0]])
  #   plt.close()
 
-    df_oz_train_data = df_oz_train[['Open', 'Volume']]
+    df_oz_train_data = df_oz_train[feature_columns]
     oz = df_oz_train_data.to_numpy()
 
     print('oz shape = ', oz.shape)
@@ -191,9 +223,10 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     print('\tsamples, time steps, and features.')
     print('Current trial,')
     print('\tsamples (n_data_size - n_test - n_seq) = ', n_data_size - n_test - n_seq)
-    print('\ttime steps = (n_seq) ', n_seq)
+    print('\ttime steps (n_seq) = ', n_seq)
     print('\tfeatures = ', n_cols)
     print('x reshape = ', x.shape)
+    print('y reshape = ', y.shape)
 
     assert (n_seq == x.shape[1]) # time steps
     assert (n_feature == x.shape[2]) # features
@@ -264,17 +297,17 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     # ... error metric on train set
 
-    df_oz_train_rmse = rmse(df_oz_train['Open'], df_oz_train['y_hat_train'])
+    df_oz_train_rmse = rmse(df_oz_train[feature_columns[0]], df_oz_train['y_hat_train'])
 
 #    plt.figure(figsize=(5, 3))
-#    plt.plot(df_oz_train['Date'], df_oz_train['Open'])
-#    plt.plot(df_oz_test['Date'], df_oz_test['Open'])
-#    plt.plot(df_oz_train['Date'], df_oz_train['y_hat_train'], marker='o')
+#    plt.plot(df_oz_train['date'], df_oz_train[feature_columns[0]])
+#    plt.plot(df_oz_test['date'], df_oz_test[feature_columns[0]])
+#    plt.plot(df_oz_train['date'], df_oz_train['y_hat_train'], marker='o')
 #    plt.close()
 
     # ... predict on test set
 
-    df_oz_test_data = df_oz_test[['Open', 'Volume']]
+    df_oz_test_data = df_oz_test[feature_columns]
     oz_test = df_oz_test_data.to_numpy()
 
     print('oz shape = ', oz_test.shape)
@@ -302,7 +335,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
 # ... error metric on test set
 
-    df_oz_test_rmse = rmse(df_oz_test['Open'], df_oz_test['y_hat_test'])
+    df_oz_test_rmse = rmse(df_oz_test[feature_columns[0]], df_oz_test['y_hat_test'])
     print(df_oz_test_rmse)
 
     # ... forward forecast
@@ -324,7 +357,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         print(df_oz_future_data)
 
         # ... select just columns used in model
-        df_oz_future_data = df_oz_future_data[['Open', 'Volume']]
+        df_oz_future_data = df_oz_future_data[feature_columns]
 
         # ... convert to numpy array, then scale
         oz_future = df_oz_future_data.to_numpy()
@@ -341,14 +374,15 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         print('next predicted value : ', sc_y_hat_future_inv)
 
         df_new_row = df_cols_like(df_oz_future)
-        df_new_row['Date'] = df_oz_future['Date'].tail(1) + timedelta(days=1)
+        df_new_row['date'] = df_oz_future['date'].tail(1) + timedelta(days=1)
         df_new_row['y_hat_future'] = sc_y_hat_future_inv
-        df_new_row['Open'] = sc_y_hat_future_inv
+        df_new_row[feature_columns[0]] = sc_y_hat_future_inv
 
         df_oz_future = pd.concat([df_oz_future, df_new_row])
 
 # ... forward fill exogenous columns ... TODO : naïve estimation not the best option !!
-        df_oz_future['Volume'] = df_oz_future['Volume'].fillna(method='ffill')
+        for this_column in feature_columns[1:]:
+            df_oz_future[this_column] = df_oz_future[this_column].fillna(method='ffill')
 
 # ... end of loop on stepwise future predictions
 
@@ -373,26 +407,26 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     plt.figure(figsize=(10, 5))
 
-    plt.plot(df_oz_train_plot['Date'], df_oz_train_plot['Open'], color='lightcoral')
-    plt.scatter(df_oz_train_plot['Date'], df_oz_train_plot['y_hat_train'],
+    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
+    plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
                 label = 'y_hat_train',
                 marker='o',
                 color='red',
                 s=5)
-    plt.plot(df_oz_test_plot['Date'], df_oz_test_plot['Open'], color='cornflowerblue')
-    plt.scatter(df_oz_test_plot['Date'], df_oz_test_plot['y_hat_test'],
+    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[0]], color='cornflowerblue')
+    plt.scatter(df_oz_test_plot['date'], df_oz_test_plot['y_hat_test'],
                 label = 'y_hat_test',
                 marker='s',
                 color='royalblue',
                 s=5)
-    plt.scatter(df_oz_future['Date'], df_oz_future['y_hat_future'],
+    plt.scatter(df_oz_future['date'], df_oz_future['y_hat_future'],
                 label = 'y_hat_future',
                 marker='D',
                 s=20,
                 color='blueviolet')
 
     plt.title('Market value Prediction - single explanatory column')
-    plt.xlabel('Date')
+    plt.xlabel('date')
     plt.ylabel('Price')
     plt.legend()
 #    plt.ylim(100, 350)
@@ -415,31 +449,31 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
 # ... last few months  x-range plot
 
-    df_oz_train_plot = df_oz_train[df_oz_train['Date'] >= datetime(2019, 1, 1)]
-    df_oz_test_plot = df_oz_test[df_oz_test['Date'] >= datetime(2019, 1, 1)]
+    df_oz_train_plot = df_oz_train[df_oz_train['date'] >= datetime(2019, 1, 1)]
+    df_oz_test_plot = df_oz_test[df_oz_test['date'] >= datetime(2019, 1, 1)]
 
     plt.figure(figsize=(10, 5))
 
-    plt.plot(df_oz_train_plot['Date'], df_oz_train_plot['Open'], color='lightcoral')
-    plt.scatter(df_oz_train_plot['Date'], df_oz_train_plot['y_hat_train'],
+    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
+    plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
                 label='y_hat_train',
                 marker='o',
                 color='red',
                 s=5)
-    plt.plot(df_oz_test_plot['Date'], df_oz_test_plot['Open'], color='cornflowerblue')
-    plt.scatter(df_oz_test_plot['Date'], df_oz_test_plot['y_hat_test'],
+    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[0]], color='cornflowerblue')
+    plt.scatter(df_oz_test_plot['date'], df_oz_test_plot['y_hat_test'],
                 label='y_hat_test',
                 marker='s',
                 color='royalblue',
                 s=5)
-    plt.scatter(df_oz_future['Date'], df_oz_future['y_hat_future'],
+    plt.scatter(df_oz_future['date'], df_oz_future['y_hat_future'],
                 label='y_hat_future',
                 marker='D',
                 s=20,
                 color='blueviolet')
 
     plt.title('Market value Prediction - single explanatory column')
-    plt.xlabel('Date')
+    plt.xlabel('date')
     plt.ylabel('Price')
     plt.legend()
     #    plt.ylim(100, 350)
@@ -502,7 +536,8 @@ if __name__ == '__main__':
     n_seq = 30
     n_test = 120
     n_future = 30
-    n_feature = 2
+    n_feature = 4
+    feature_columns = ['adj_close', 'high', 'low', 'volume']
 
     # ... model params
     batch_size = 64
@@ -513,10 +548,11 @@ if __name__ == '__main__':
 
     df_summary = pd.DataFrame()
 
-    for n_seq in [2]:
-        for n_layers in [1]:
-            for batch_size in [64]:
-                df = lstm_001(n_data_size, n_seq, n_test, n_future, n_feature,
+    for n_seq in [2, 5, 10]:
+        for n_layers in [1, 4]:
+            for batch_size in [64, 128]:
+                df = lstm_001(n_data_size, n_seq, n_test, n_future,
+                              n_feature, feature_columns,
                               n_layers, batch_size, n_epochs, save_plots)
                 df_summary = pd.concat([df_summary, df])
                 print(timer())
