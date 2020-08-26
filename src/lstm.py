@@ -40,6 +40,9 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.callbacks import EarlyStopping
 
+import utils as u
+import metrics as m
+import make_feature as mf
 
 # ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 # ... some directories
@@ -51,69 +54,15 @@ plot_dir = '/home/mcdevitt/PycharmProjects/lstm_101/plot/'
 rprt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rprt/'
 # ........................................................
 
-
-# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-# ... some utility functions
-# ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-
-def sprintf(buf, fmt, *args):
-    buf.write(fmt % args)
-
-
-def dup_scaler(scaler, sc2, col=0):
-    """
-     Returns an object sklearn MinMaxScaler with values extracted from a multi-column MinMaxScaler
-     :param scaler : multicolumn scaler, previously defined
-     :param col : column number from which to extract scaling values
-     :return sc2 : previously instatiated MinMaxScaler in which to copy column specific scaling values
-     :rtype: sklearn scaler
-     """
-
-    sc2.data_max_ = scaler.data_max_[col]
-    sc2.data_min_ = scaler.data_min_[col]
-    sc2.data_range_ = scaler.data_range_[col]
-    sc2.min_ = scaler.min_[col]
-    sc2.scale_ = scaler.scale_[col]
-
-    return sc2
-
-
-def df_cols_like(df):
-    """
-    Returns an empty data frame with the same column names and types as df
-    https://stackoverflow.com/questions/27467730/is-there-a-way-to-copy-only-the-structure-not-the-data-of-a-pandas-dataframe
-    """
-    df2 = pd.DataFrame({i[0]: pd.Series(dtype=i[1])
-                        for i in df.dtypes.iteritems()},
-                       columns=df.dtypes.index)
-    return df2
-
-
-def rmse(y, y_hat):
-
-    root_mean_squared_error = ((y_hat - y) ** 2).mean() ** .5
-    return root_mean_squared_error
-
-
-def clean_column_names(ls_column_names, chars_to_remove=None):
-
-    if chars_to_remove is None:
-        chars_to_remove = [' ', '-', '\.']
-    ls_column_names = ls_column_names.str.lower()
-    for c in chars_to_remove:
-        ls_column_names = ls_column_names.str.replace(c, '_')
-
-    return ls_column_names
-
 # ........................................................
 
 # ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 # ... LSTM model implementation
 # ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_feature = 1,
-             feature_columns = ['adj_close'],
+def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
+             n_future = 30, n_fwd = 1,
+             n_feature = 1, feature_columns = ['adj_close'],
              n_layers = 2, batch_size = 32, n_epochs = 20,
              plot_save = False):
     """
@@ -128,39 +77,20 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     print('run initiated with run_id ', run_id)
 
     np.random.seed(20200504)
-    os.chdir(plot_dir)
-
-    # ... load data
-
-    os.chdir(data_dir)
-    print(os.getcwd())
-
-    f = "sp500.csv"
-    df_sp500 = pd.read_csv(f)
-    print('read ', df_sp500.shape[0], 'lines from ', f)
-
-    df_sp500 = df_sp500.dropna()
-    df_sp500.columns = clean_column_names(df_sp500.columns)
-    df_sp500['zeros'] = 0
-    df_sp500['date'] = pd.to_datetime(df_sp500['date'])
 
 # ... drop leading rows if data set longer than desired size
 
-    if len(df_sp500) > n_data_size:
-        df_sp500_red = df_sp500.tail(n_data_size)
+    if len(df_feature) > n_data_size:
+        df_sp500_red = df_feature.tail(n_data_size)
     else:
-        df_sp500_red = df_sp500
+        df_sp500_red = df_feature
         print('n_data_size exceeds data set length')
         print('n_data_size = ', n_data_size)
-        print('data set size ', df_sp500.shape)
+        print('data set size ', df_feature.shape)
     df_sp500_red.reset_index(drop=True, inplace=True)
 
     # ... input data set : Open + Volume
     df_oz = df_sp500_red
-
-#    plt.figure(figsize=(5, 3))
-#    plt.plot(df_oz['date'], df_oz[feature_columns[0]])
-#    plt.close()
 
     # ... set up train and test size
 
@@ -175,11 +105,6 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     df_oz_test = df_oz.tail(n_test)
     df_oz_test.reset_index(drop=True, inplace=True)
 
- #   plt.figure(figsize=(5, 3))
- #   plt.plot(df_oz_train['date'], df_oz_train[feature_columns[0]])
- #   plt.plot(df_oz_test['date'], df_oz_test[feature_columns[0]])
- #   plt.close()
-
     df_oz_train_data = df_oz_train[feature_columns]
     oz = df_oz_train_data.to_numpy()
 
@@ -193,14 +118,9 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     # ... scale on train set
     oz_scaled = scaler.fit_transform(oz[:, 0: n_cols])
 
-#    plt.figure(figsize=(5, 3))
-#    plt.plot(oz_scaled[:, 0])
-#    plt.close()
-
     # ... dup scaler for later single column hack
-
     sc2 = copy.deepcopy(scaler)
-    sc2 = dup_scaler(scaler, sc2, 0)
+    sc2 = u.dup_scaler(scaler, sc2, 0)
 
     # ... use n_seq day scrolling window for feature
     # ... hold out last n_test days for evaluation
@@ -208,11 +128,11 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     x = []
     y = []
     # ... TODO : this can be done with split and reshape ?
-    # .. TODO ... is this lagging properly ???
+    # ... TODO ... is this lagging properly ???
 
-    for i in range(n_seq, n_train):
+    for i in range(n_seq, n_train - n_fwd + 1):
         x.append(oz_scaled[i - n_seq: i])
-        y.append(oz_scaled[i, 0])
+        y.append(oz_scaled[i + (n_fwd - 1), 0])
 
     # ... shape data to fit keras input structure
 
@@ -262,7 +182,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
                         epochs= n_epochs,
                         batch_size=batch_size,
                         callbacks=[callback],
-                        verbose=0)
+                        verbose=1)
     end_time = timer()
     del_time = end_time - start_time
     print('fit complete : ', end_time)
@@ -277,6 +197,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     plt.figure(figsize=(5, 3))
     plt.plot(history.history['loss'])
     # plt.plot(history.history['val_loss'])
+    plt.yscale('log')
     plt.title('Model loss')
     plt.ylabel('Loss')
     plt.xlabel('Epoch')
@@ -297,7 +218,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
     # ... error metric on train set
 
-    df_oz_train_rmse = rmse(df_oz_train[feature_columns[0]], df_oz_train['y_hat_train'])
+    df_oz_train_rmse = m.rmse(df_oz_train[feature_columns[0]], df_oz_train['y_hat_train'])
 
 #    plt.figure(figsize=(5, 3))
 #    plt.plot(df_oz_train['date'], df_oz_train[feature_columns[0]])
@@ -335,7 +256,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 
 # ... error metric on test set
 
-    df_oz_test_rmse = rmse(df_oz_test[feature_columns[0]], df_oz_test['y_hat_test'])
+    df_oz_test_rmse = m.rmse(df_oz_test[feature_columns[0]], df_oz_test['y_hat_test'])
     print(df_oz_test_rmse)
 
     # ... forward forecast
@@ -373,7 +294,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
         sc_y_hat_future_inv = list(y_hat_future_inv.reshape(y_hat_future_inv.shape[0]))[0]
         print('next predicted value : ', sc_y_hat_future_inv)
 
-        df_new_row = df_cols_like(df_oz_future)
+        df_new_row = u.df_cols_like(df_oz_future)
         df_new_row['date'] = df_oz_future['date'].tail(1) + timedelta(days=1)
         df_new_row['y_hat_future'] = sc_y_hat_future_inv
         df_new_row[feature_columns[0]] = sc_y_hat_future_inv
@@ -405,8 +326,9 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     df_oz_train_plot = df_oz_train
     df_oz_test_plot = df_oz_test
 
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(12, 8))
 
+    plt.subplot(2, 1, 1)
     plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
     plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
                 label = 'y_hat_train',
@@ -425,7 +347,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
                 s=20,
                 color='blueviolet')
 
-    plt.title('Market value Prediction - single explanatory column')
+    plt.title('Market value Prediction - ')
     plt.xlabel('date')
     plt.ylabel('Price')
     plt.legend()
@@ -443,8 +365,12 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
              multialignment="left",
              bbox=dict(fc="lightgrey"))
 
+    plt.subplot(2, 1, 2)
+    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[1]], color='grey')
+    plt.grid(True)
+
     if plot_save:
-        plt.savefig('sp500_lstm_single_column_' + run_id + '.png')
+        plt.savefig('sp500_dji_lstm_' + run_id + '.png')
     plt.close()
 
 # ... last few months  x-range plot
@@ -452,8 +378,9 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
     df_oz_train_plot = df_oz_train[df_oz_train['date'] >= datetime(2019, 1, 1)]
     df_oz_test_plot = df_oz_test[df_oz_test['date'] >= datetime(2019, 1, 1)]
 
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(12, 8))
 
+    plt.subplot(2, 1, 1)
     plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
     plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
                 label='y_hat_train',
@@ -472,7 +399,7 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
                 s=20,
                 color='blueviolet')
 
-    plt.title('Market value Prediction - single explanatory column')
+    plt.title('Market value Prediction - ')
     plt.xlabel('date')
     plt.ylabel('Price')
     plt.legend()
@@ -496,8 +423,18 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
              multialignment="left",
              bbox=dict(fc="lightgrey"))
 
+    plt.subplot(2, 1, 2)
+    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[1]], color='grey')
+    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[1]], color='cornflowerblue')
+    plt.scatter(df_oz_future['date'], df_oz_future[feature_columns[1]],
+                label = feature_columns[1] + '_projected',
+                marker = 'o',
+                s = 10,
+                color='blueviolet')
+    plt.grid(True)
+
     if plot_save:
-        plt.savefig('sp500_lstm_single_column_' + run_id + '_2019.png')
+        plt.savefig('sp500_dji_lstm_' + run_id + '_2019.png')
     plt.close()
 
     df_results = pd.DataFrame(
@@ -526,42 +463,3 @@ def lstm_001(n_data_size = 2000, n_seq = 20, n_test = 90, n_future = 30, n_featu
 # The reshape() function on NumPy arrays can be used to reshape your 1D or 2D data to be 3D.
 # The reshape() function takes a tuple as an argument that defines the new shape.
 
-
-if __name__ == '__main__':
-
-    run_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # ... data params
-    n_data_size = 2000
-    n_seq = 30
-    n_test = 120
-    n_future = 30
-    n_feature = 4
-    feature_columns = ['adj_close', 'high', 'low', 'volume']
-
-    # ... model params
-    batch_size = 64
-    n_epochs = 50
-
-    # ... plot switch
-    save_plots = True
-
-    df_summary = pd.DataFrame()
-
-    for n_seq in [2, 5, 10]:
-        for n_layers in [1, 4]:
-            for batch_size in [64, 128]:
-                df = lstm_001(n_data_size, n_seq, n_test, n_future,
-                              n_feature, feature_columns,
-                              n_layers, batch_size, n_epochs, save_plots)
-                df_summary = pd.concat([df_summary, df])
-                print(timer())
-                print(df)
-
-    print(df_summary)
-
-    os.chdir(rprt_dir)
-    f_out = 'df_summary_' + run_time + '.csv'
-    df_summary.to_csv(f_out, index = False)
-
-    print(__name__, ' completed.')
