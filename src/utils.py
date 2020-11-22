@@ -3,6 +3,8 @@
 # ... -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 import pandas as pd
+import yfinance as yf
+from datetime import date, datetime, timedelta
 
 def clean_column_names(ls_column_names, chars_to_remove=None):
     if chars_to_remove is None:
@@ -45,3 +47,22 @@ def df_cols_like(df):
                         for i in df.dtypes.iteritems()},
                        columns=df.dtypes.index)
     return df2
+
+
+TRADING_DAYS_PER_YEAR = 253
+DAYS_PER_YEAR = 365
+
+def get_yahoo_data(days = 500, ticker = 'VIX') :
+
+    yesterday = date.today() - timedelta(days = 1)
+    calendar_days = days * DAYS_PER_YEAR / TRADING_DAYS_PER_YEAR * 1.05
+    start_date = yesterday - timedelta(days = calendar_days)
+
+    df = pd.DataFrame()
+
+    df = yf.download(ticker, start_date, yesterday)
+    df.reset_index(level=0, inplace=True)
+    print(ticker)
+    print(df.head())
+
+    return df

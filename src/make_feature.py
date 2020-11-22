@@ -5,9 +5,10 @@ import copy
 from datetime import datetime, timedelta
 from timeit import default_timer as timer
 import uuid
+from pathlib import Path
 
-import numpy as np; print ("numpy", np.__version__)
-import pandas as pd; print ("pandas", pd.__version__)
+import numpy as np
+import pandas as pd
 
 pd.set_option("display.max_rows", 999)
 pd.set_option("display.max_columns", 999)
@@ -24,42 +25,37 @@ data_dir = '/home/mcdevitt/PycharmProjects/lstm_101/data/'
 
 # ... read in input files and assemble to df_feature
 
-def make_feature():
+def make_feature(ticker, days = 500, refresh = False, feature_column = 'adj_close'):
 
 # ... load data
 
-    os.chdir(data_dir)
-    print(os.getcwd())
+    df_feature = pd.DataFrame()
 
-    cols_2_keep = ['date', 'adj_close']
+    cols_2_keep = ['date', feature_column]
+    first = True
 
-# ... S&P 500
+    for t in ticker:
+        f = Path(data_dir) / (t + '.pkl')
 
-    f = "sp500.csv"
-    df_sp500 = pd.read_csv(f)
-    print('read ', df_sp500.shape[0], 'lines from ', f)
-
-    df_sp500 = df_sp500.dropna()
-    df_sp500.columns = u.clean_column_names(df_sp500.columns)
-    df_sp500['date'] = pd.to_datetime(df_sp500['date'])
-    df_sp500 = df_sp500[cols_2_keep]
-    df_sp500.rename({'adj_close': 'sp500'}, axis=1, inplace=True)
-
-# ... DJI
-
-    g = "dji.csv"
-    df_dji = pd.read_csv(g)
-    print('read ', df_dji.shape[0], 'lines from ', g)
+        if not refresh:
+            df_tckr = pd.read_pickle(f)
+            print('read ', df_tckr.shape[0], 'lines from ', f)
+        else:
+            df_tckr = u.get_yahoo_data(days = days, ticker = t)
+            print('refreshed ', df_tckr.shape[0], 'lines for ', t)
+            df_tckr.to_pickle(f)
     
-    df_dji = df_dji.dropna()
-    df_dji.columns = u.clean_column_names(df_dji.columns)
-    df_dji['date'] = pd.to_datetime(df_dji['date'])
-    df_dji = df_dji[cols_2_keep]
-    df_dji.rename({'adj_close': 'dji'}, axis=1, inplace=True)
+        df_tckr = df_tckr.dropna()
+        df_tckr.columns = u.clean_column_names(df_tckr.columns)
+        df_tckr['date'] = pd.to_datetime(df_tckr['date'])
+        df_tckr = df_tckr[cols_2_keep]
+        df_tckr.rename({feature_column: t}, axis=1, inplace=True)
 
-# ... merge into common data frame
-
-    df_feature = df_sp500.merge(df_dji, on='date', how='left')
-    df_feature = df_feature.dropna()
+        if first:
+            df_feature = df_tckr
+            first = False
+        else:
+            df_feature = df_feature.merge(df_tckr, on='date', how='left')
+            print('feature accumulation : %4s | %06d' % (t, df_feature.shape[0]))
 
     return df_feature

@@ -18,3 +18,4 @@ six==1.14.0
 sklearn==0.0
 tensorflow
 threadpoolctl==2.0.0
+yfinance==0.1.55
