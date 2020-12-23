@@ -26,6 +26,14 @@ data_dir = '/home/mcdevitt/PycharmProjects/lstm_101/data/'
 # ... read in input files and assemble to df_feature
 
 def make_feature(ticker, days = 500, refresh = False, feature_column = 'adj_close'):
+    """
+
+    :param ticker: list of ticker symbols
+    :param days:
+    :param refresh: if Trure - fetch current data using yahoo.finance
+    :param feature_column: which column of raw data to use as feature
+    :return: df_feature ... data frame of date indexed values
+    """
 
 # ... load data
 
@@ -57,5 +65,7 @@ def make_feature(ticker, days = 500, refresh = False, feature_column = 'adj_clos
         else:
             df_feature = df_feature.merge(df_tckr, on='date', how='left')
             print('feature accumulation : %4s | %06d' % (t, df_feature.shape[0]))
+
+    df_feature.dropna(axis=1, inplace=True)
 
     return df_feature

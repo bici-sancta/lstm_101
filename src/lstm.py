@@ -57,7 +57,7 @@ rprt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rprt/'
 
 def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
              n_future = 30, n_fwd = 1,
-             n_feature = 1, feature_columns = ['adj_close'],
+             n_feature = 1, feature_columns = None,
              n_layers = 2, batch_size = 32, n_epochs = 20,
              plot_save = False):
     """
@@ -66,6 +66,9 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
     :return: sets of output plot summarize model fit and forecasts
     """
     # ... generate run id, seed, plot_dir
+
+    if feature_columns is None:
+        feature_columns = ['adj_close']
 
     uuid6 = str(uuid.uuid4()).lower()[0:6]
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid6
@@ -172,11 +175,11 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
     start_time = timer()
     print('start model fit : ', start_time)
     history = model.fit(x, y,
-                        validation_split = 0.25,
-                        epochs= n_epochs,
+                        validation_split=0.25,
+                        epochs=n_epochs,
                         batch_size=batch_size,
                         callbacks=[callback],
-                        verbose=0)
+                        verbose=2)
     end_time = timer()
     del_time = end_time - start_time
     print('fit complete : ', end_time)
@@ -306,6 +309,21 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
 
 # ... end of loop on stepwise future predictions
 
+
+    df_results = pd.DataFrame(
+        [{"n_data_size" : n_data_size,
+             "n_seq" : n_seq,
+             "n_test" : n_test,
+             "n_future" : n_future,
+             "n_layers" : n_layers,
+             "batch_size" : batch_size,
+             "n_epochs" : n_epochs,
+             "train_mape" : model_train_mape,
+             "train_mse" : model_train_mse,
+             "train_rmse" : df_train_rmse,
+             "test_rmse" : df_test_rmse,
+             "timer" : del_time}])
+
     # ... make a plot
 
     data_params = "n_data_size : %d\n" \
@@ -319,23 +337,22 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
                    % (n_layers, batch_size, n_epochs)
     error_metric = "test rmse : %.2f" % df_test_rmse
 
-
 # ... full x-range plot
 
-    df_oz_train_plot = df_train
-    df_oz_test_plot = df_test
+    df_train_plot = df_train
+    df_test_plot = df_test
 
     fig = plt.figure(figsize=(12, 8))
 
     plt.subplot(2, 1, 1)
-    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
-    plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
+    plt.plot(df_train_plot['date'], df_train_plot[feature_columns[0]], color='lightcoral')
+    plt.scatter(df_train_plot['date'], df_train_plot['y_hat_train'],
                 label = 'y_hat_train',
                 marker='o',
                 color='red',
                 s=5)
-    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[0]], color='cornflowerblue')
-    plt.scatter(df_oz_test_plot['date'], df_oz_test_plot['y_hat_test'],
+    plt.plot(df_test_plot['date'], df_test_plot[feature_columns[0]], color='cornflowerblue')
+    plt.scatter(df_test_plot['date'], df_test_plot['y_hat_test'],
                 label = 'y_hat_test',
                 marker='s',
                 color='royalblue',
@@ -365,29 +382,29 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
              bbox=dict(fc="lightgrey"))
 
     plt.subplot(2, 1, 2)
-    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[1]], color='grey')
+    plt.plot(df_train_plot['date'], df_train_plot[feature_columns[1]], color='grey')
     plt.grid(True)
 
     if plot_save:
-        plt.savefig('sp500_dji_lstm_' + run_id + '.png')
+        plt.savefig('lstm_ts_' + run_id + '.png')
     plt.close()
 
 # ... last few months  x-range plot
 
-    df_oz_train_plot = df_train[df_train['date'] >= datetime(2019, 1, 1)]
-    df_oz_test_plot = df_test[df_test['date'] >= datetime(2019, 1, 1)]
+    df_train_plot = df_train[df_train['date'] >= datetime(2019, 1, 1)]
+    df_test_plot = df_test[df_test['date'] >= datetime(2019, 1, 1)]
 
     fig = plt.figure(figsize=(12, 9))
 
     plt.subplot(3, 1, 1)
-    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[0]], color='lightcoral')
-    plt.scatter(df_oz_train_plot['date'], df_oz_train_plot['y_hat_train'],
+    plt.plot(df_train_plot['date'], df_train_plot[feature_columns[0]], color='lightcoral')
+    plt.scatter(df_train_plot['date'], df_train_plot['y_hat_train'],
                 label='y_hat_train',
                 marker='o',
                 color='red',
                 s=5)
-    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[0]], color='cornflowerblue')
-    plt.scatter(df_oz_test_plot['date'], df_oz_test_plot['y_hat_test'],
+    plt.plot(df_test_plot['date'], df_test_plot[feature_columns[0]], color='cornflowerblue')
+    plt.scatter(df_test_plot['date'], df_test_plot['y_hat_test'],
                 label='y_hat_test',
                 marker='s',
                 color='royalblue',
@@ -423,8 +440,8 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
              bbox=dict(fc="lightgrey"))
 
     plt.subplot(3, 1, 2)
-    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[1]], color='grey')
-    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[1]], color='cornflowerblue')
+    plt.plot(df_train_plot['date'], df_train_plot[feature_columns[1]], color='grey')
+    plt.plot(df_test_plot['date'], df_test_plot[feature_columns[1]], color='cornflowerblue')
     plt.scatter(df_future_data['date'], df_future_data[feature_columns[1]],
                 label = feature_columns[1] + '_projected',
                 marker = 'o',
@@ -434,8 +451,8 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
     plt.grid(True)
 
     plt.subplot(3, 1, 3)
-    plt.plot(df_oz_train_plot['date'], df_oz_train_plot[feature_columns[2]], color='grey')
-    plt.plot(df_oz_test_plot['date'], df_oz_test_plot[feature_columns[2]], color='cornflowerblue')
+    plt.plot(df_train_plot['date'], df_train_plot[feature_columns[2]], color='grey')
+    plt.plot(df_test_plot['date'], df_test_plot[feature_columns[2]], color='cornflowerblue')
     plt.scatter(df_future_data['date'], df_future_data[feature_columns[2]],
                 label = feature_columns[1] + '_projected',
                 marker = 'o',
@@ -445,22 +462,9 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
     plt.grid(True)
 
     if plot_save:
-        plt.savefig('sp500_dji_lstm_' + run_id + '_2019.png')
+        plt.savefig('lstm_ts_zoom' + run_id + '.png')
     plt.close()
 
-    df_results = pd.DataFrame(
-        [{"n_data_size" : n_data_size,
-             "n_seq" : n_seq,
-             "n_test" : n_test,
-             "n_future" : n_future,
-             "n_layers" : n_layers,
-             "batch_size" : batch_size,
-             "n_epochs" : n_epochs,
-             "train_mape" : model_train_mape,
-             "train_mse" : model_train_mse,
-             "train_rmse" : df_train_rmse,
-             "test_rmse" : df_test_rmse,
-             "timer" : del_time}])
 
     return df_results
 
