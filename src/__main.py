@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
     # ... model params
     batch_size = 64
-    n_epochs = 50
+    n_epochs = 4
 
     # ... plot switch
     save_plots = True
@@ -109,8 +109,8 @@ if __name__ == '__main__':
     df_summary = pd.DataFrame()
 
     for n_seq in [90]:
-        for n_layers in [4]:
-            for batch_size in [128]:
+        for n_layers in [2]:
+            for batch_size in [256]:
                 df = l.lstm_001(df_feature, n_data_size, n_seq, n_test, n_future, n_fwd,
                                 n_feature, feature_columns,
                                 n_layers, batch_size, n_epochs, save_plots)

@@ -15,6 +15,7 @@ import copy
 from datetime import datetime, timedelta
 from timeit import default_timer as timer
 import uuid
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -46,6 +47,8 @@ home_dir = '/home/mcdevitt/PycharmProjects/lstm_101/src/'
 data_dir = '/home/mcdevitt/PycharmProjects/lstm_101/data/'
 plot_dir = '/home/mcdevitt/PycharmProjects/lstm_101/plot/'
 rprt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rprt/'
+rslt_dir = '/home/mcdevitt/PycharmProjects/lstm_101/rslt/'
+
 # ........................................................
 
 # ........................................................
@@ -336,6 +339,23 @@ def lstm_001(df_feature, n_data_size = 2000, n_seq = 20, n_test = 90,
                    "n_epochs    : %d" \
                    % (n_layers, batch_size, n_epochs)
     error_metric = "test rmse : %.2f" % df_test_rmse
+
+# ... combine data frames for storage
+
+    df_train.rename(columns={'y_hat_train': 'y_hat'}, inplace=True)
+    df_test.rename(columns={'y_hat_test': 'y_hat'}, inplace=True)
+    df_future_data.rename(columns={'y_hat_future': 'y_hat'}, inplace=True)
+    df_train['period'] = 'train'
+    df_test['period'] = 'test'
+    df_future_data['period'] = 'predict'
+    last_test_date = df_test.loc[df_test.index[-1], 'date']
+    df_future_data = df_future_data[df_future_data['date'] > last_test_date]
+
+# ... df_ttp = df of train, test, and predict values
+
+    df_ttp = pd.concat([df_train, df_test, df_future_data])
+    f = Path(rslt_dir) / ('lstm_df_ttp_' + run_id + '.pkl')
+    df_ttp.to_pickle(f)
 
 # ... full x-range plot
 
